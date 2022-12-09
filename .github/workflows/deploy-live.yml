@@ -17,14 +17,11 @@ jobs:
     environment:
       name: live
     steps:
-      - name: get-name
-        uses: actions/github-script@0.9.0
-        with:
-          script: |
-            let ghubref = ${{ env.github.ref.name }}
-            const name = ghubref.split('/')[1]
-            core.setOutput('name', name)
-      - run: echo "${{steps.get-name.outputs.name}}"
+      - id: get-bname
+        run: |
+          bname=$(echo ${{github.ref.name}} | cut -d/ -f2)
+          echo "::set-output name=bname::$bname"
+      - run: echo "${{steps.get-bname.outputs.bname}}"
       - name: Set GitHub Actions as Commit Author
         run: |
           git config --global user.name github-actions
@@ -51,7 +48,7 @@ jobs:
       - name: Checkout Dev Target
         uses: actions/checkout@v2
         with:
-          repository: frederick-work/${{steps.get-name.outputs.name}}
+          repository: frederick-work/${{steps.get-bname.outputs.bname}}
           path: 'deploy'
           token: ${{ secrets.PAT }}
       
@@ -60,7 +57,7 @@ jobs:
           rm -r deploy/*
           rsync -avr --prune-empty-dirs --exclude '.git' build/* deploy
           cd deploy
-          echo '${{steps.get-name.outputs.name}}.frederick.work' > CNAME
+          echo '${{steps.get-bname.outputs.bname}}.frederick.work' > CNAME
           git add .
           git commit -m "$COMMIT_MSG $GITHUB_SHA"
           git push
