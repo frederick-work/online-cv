@@ -1,0 +1,65 @@
+name: Live Site Build and Deploy
+on:
+  push:
+    branches:
+      - 'live/*'
+    paths-ignore:
+      - '.github/workflows/**'
+      - 'README.md'
+  workflow_dispatch:
+
+env:
+  COMMIT_MSG: ${{ github.event.commits[0].message }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: live
+    steps:
+      - name: get-name
+        uses: actions/github-script@0.9.0
+        with:
+          script: |
+            const name = ${{ env.GITHUB_REF_NAME }}.split('/')[1]
+            core.setOutput('name', name)
+      - run: echo "${{steps.get-name.outputs.name}}"
+      - name: Set GitHub Actions as Commit Author
+        run: |
+          git config --global user.name github-actions
+          git config --global user.email github-actions@github.com
+          
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+        with:
+          path: 'build'
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '2.7.0'
+          bundler-cache: true
+          working-directory: 'build/'
+      
+      - name: Build
+        run: |
+          cd build
+          MAKE="make --jobs 4" bundle exec jekyll build
+          cd ..
+
+      - name: Checkout Dev Target
+        uses: actions/checkout@v2
+        with:
+          repository: frederick-work/${{steps.get-name.outputs.name}}
+          path: 'deploy'
+          token: ${{ secrets.PAT }}
+      
+      - name: Push files to target
+        run: |
+          rm -r deploy/*
+          rsync -avr --prune-empty-dirs --exclude '.git' build/* deploy
+          cd deploy
+          echo '${{steps.get-name.outputs.name}}.frederick.work' > CNAME
+          git add .
+          git commit -m "$COMMIT_MSG $GITHUB_SHA"
+          git push
