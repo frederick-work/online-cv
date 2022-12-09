@@ -1,0 +1,89 @@
+name: Pheonix Build and Deploy
+on:
+  pull_request:
+    types: [ ready_for_review ]
+    branches: [ development ]
+    paths-ignore:
+      - '.github/workflows/**'
+      - 'README.md'
+  workflow_dispatch:
+
+
+env:
+  PR_REPO_NAME: pheonix-deploy-${{ github.event.pull_request.node_id }}
+
+jobs:
+  create-page-host:
+    runs-on: ubuntu-latest
+    environment: 
+      name: pr-staging
+    steps:
+      - name: Create new repository for temporary deployment
+        uses: enigmaglass-docs/create-repository-action@v2
+        with:
+          name: ${{ env.PR_REPO_NAME }}
+          org: enigmaglass-docs
+          access-token: ${{ secrets.PAT }}
+    
+  pheonix-build-deploy:
+    needs: create-page-host
+    runs-on: ubuntu-latest
+    environment: 
+      name: pr-staging
+      url: https://enigmaglass-docs.github.io/${{ env.PR_REPO_NAME }}/
+    steps:
+      # https://github.com/actions/checkout#push-a-commit-using-the-built-in-token
+      - name: Set GitHub Actions as Commit Author
+        run: |
+          git config --global user.name github-actions
+          git config --global user.email github-actions@github.com
+          
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+        with:
+          path: 'pr-build'
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '2.7.0'
+          bundler-cache: true
+          working-directory: 'pr-build/'
+      
+      - name: Build Pull Request
+        run: |
+          cd pr-build
+          cat pheonix-blurb.md >> index.md
+          MAKE="make --jobs 4" bundle exec jekyll build
+          cd ..
+      
+      - name: Checkout temporary deployment target repo
+        uses: actions/checkout@v2
+        with:
+          repository: enigmaglass-docs/${{ env.PR_REPO_NAME }}
+          path: 'pr-deploy'
+          token: ${{ secrets.PAT }}
+          ref: 'main'
+      
+      - name: Push files to target
+        run: |
+          rm -r pr-deploy/*
+          rsync -avr --prune-empty-dirs --exclude '.git' pr-build/* pr-deploy
+          cd pr-deploy
+          echo ${{ env.URL }} > CNAME
+          git add .
+          git commit -m "$COMMIT_MSG $GITHUB_SHA"
+          git push
+
+  init-pheonix-page:
+    needs: pheonix-build-deploy
+    runs-on: ubuntu-latest
+    environment: 
+      name: pr-staging
+    steps:
+      - name: Initialize github pages for temporary deployment
+        uses: enigmaglass-docs/create-page-action@v1
+        with:
+          name: ${{ env.PR_REPO_NAME }}
+          org: enigmaglass-docs
+          access-token: ${{ secrets.PAT }}
