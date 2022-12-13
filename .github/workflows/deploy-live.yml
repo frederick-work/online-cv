@@ -19,9 +19,10 @@ jobs:
     steps:
       - id: get-bname
         run: |
-          bname=$(echo ${{github.ref.name}} | cut -d/ -f2)
+          bname=$(echo ${{github.ref}} | cut -d/ -f2)
           echo "::set-output name=bname::$bname"
       - run: echo "${{steps.get-bname.outputs.bname}}"
+
       - name: Set GitHub Actions as Commit Author
         run: |
           git config --global user.name github-actions
